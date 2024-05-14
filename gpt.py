@@ -6,11 +6,12 @@ from torch.nn import functional as F
 #hyperparameters
 block_size = 8 # set the block size ( maximum context length for predictions)
 batch_size = 32 # set the batch size ( how many blocks to train on at once)
-max_iters = 10000 # set the number of iterations to train for
+max_iters = 3000 # set the number of iterations to train for
 eval_interval = 300 # set the number of iterations to evaluate the model
 learnign_rate = 1e-3 # set the learning rate
 eval_iters = 200
 device = 'cuda' if torch.cuda.is_available() else 'cpu' # check if a GPU is available
+n_embed = 32 # set the embedding size
 
 print(device)
 
@@ -60,12 +61,18 @@ def estimate_loss():
     return out
 
 class BigramLanguageModel(nn.Module):
-    def __init__(self, vocab_size):
+    def __init__(self):
         super().__init__()
-        self.token_embedding_table = nn.Embedding(vocab_size, vocab_size)
+        self.token_embedding_table = nn.Embedding(vocab_size, n_embed)
+        self.position_embedding_table = nn.Embedding(block_size, n_embed)
+        self.lm_head = nn.Linear(n_embed, vocab_size)
 
     def forward(self, idx, targets = None):
-        logits = self.token_embedding_table(idx) # (batch_size, block_size, vocab_size) (B, T, C)
+        B, T = idx.shape
+        tok_emb = self.token_embedding_table(idx) # (batch_size, block_size, n_embed) (B, T, C)
+        pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (block_size, n_embed) (T, C)
+        x = tok_emb + pos_emb # (B, T, C)
+        logits = self.lm_head(x) # (batch_size, block_size, vocab_size) (B, T, C)
         if(targets is None):
             loss = None
         else:
@@ -85,12 +92,17 @@ class BigramLanguageModel(nn.Module):
             idx = torch.cat((idx, idx_next), dim=1) # (B, T+1)
         return idx
 
-model = BigramLanguageModel(vocab_size)
+model = BigramLanguageModel()
 model = model.to(device) # move the model to the proper device
 
 optimizer = torch.optim.Adam(model.parameters(), lr=learnign_rate) # create an optimizer object
 
-for steps in range(max_iters):
+for iter in range(max_iters):
+
+    if iter % eval_interval == 0:
+        losses = estimate_loss()
+        print(f'Step {iter}, Train loss: {losses["train"]:.4f}, Val loss: {losses["val"]:.4f}')
+
     xb, yb = get_batch('train')
 
     # evaluate the loss
@@ -99,7 +111,6 @@ for steps in range(max_iters):
     loss.backward()
     optimizer.step()
 
-print(loss.item())
 idx = torch.zeros((1, 1), dtype=torch.long, device=device)
 print(decode(model.generate(idx, max_new_tokens= 500)[0].tolist()))
 
