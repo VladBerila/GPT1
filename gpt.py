@@ -4,16 +4,19 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 #hyperparameters
-block_size = 8 # set the block size ( maximum context length for predictions)
-batch_size = 32 # set the batch size ( how many blocks to train on at once)
+block_size = 64 # set the block size ( maximum context length for predictions)
+batch_size = 256 # set the batch size ( how many blocks to train on at once)
 max_iters = 5000 # set the number of iterations to train for
 eval_interval = 500 # set the number of iterations to evaluate the model
-learnign_rate = 1e-3 # set the learning rate
+learnign_rate = 3e-4 # set the learning rate
 eval_iters = 200
 device = 'cuda' if torch.cuda.is_available() else 'cpu' # check if a GPU is available
-n_embed = 32 # set the embedding size
+n_embed = 384 # set the embedding size
+n_layer = 6 # set the number of transformer blocks
+n_heads = 6 # set the number of heads in the multi-head attention
+dropout = 0.2 # set the dropout rate
 
-print(device)
+#print(device)
 
 path = pathlib.Path().resolve() # get the path to the current directory
 #read in all the words
@@ -70,6 +73,8 @@ class Head(nn.Module):
         self.value = nn.Linear(n_embed, head_size, bias=False)
         self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
 
+        self.dropout = nn.Dropout(dropout)
+
     def forward(self, x):
         B, T, C = x.shape
         k = self.key(x) # (B, T, C)
@@ -78,6 +83,7 @@ class Head(nn.Module):
         wei = q @ k.transpose(-2, -1) * C**-0.5 # (B, T, C) @ (B, C, T) -> (B, T, T)
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf')) # mask out the upper triangular part
         wei = F.softmax(wei, dim=-1) # (B, T, T)
+        wei = self.dropout(wei) # apply dropout to the attention scores
         # apply the attention to the values ( perform the weighted aggregation of the values)
         v = self.value(x) # (B, T, C)
         out = wei @ v 
@@ -90,10 +96,11 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size) for _ in range(n_heads)])
         self.proj = nn.Linear(n_embed, n_embed)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         head_out = torch.cat([head(x) for head in self.heads], dim=-1) # apply each head to the input and concatenate the outputs of all heads
-        head_out = self.proj(head_out) # project the outputs of all heads
+        head_out = self.dropout(self.proj(head_out)) # project the outputs of all heads
         return head_out
 
 class FeedForward(nn.Module):
@@ -105,6 +112,7 @@ class FeedForward(nn.Module):
             nn.Linear(n_embed, 4 * n_embed),
             nn.ReLU(),
             nn.Linear(4 * n_embed, n_embed),
+            nn.Dropout(dropout), # apply dropout to the output of the ReLU
         )
 
     def forward(self, x):
@@ -131,12 +139,8 @@ class BigramLanguageModel(nn.Module):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embed)
         self.position_embedding_table = nn.Embedding(block_size, n_embed)
-        self.blocks = nn.Sequential(
-            Block(n_embed, n_heads=4),
-            Block(n_embed, n_heads=4),
-            Block(n_embed, n_heads=4),
-            nn.LayerNorm(n_embed),
-        )
+        self.blocks = nn.Sequential(*[Block(n_embed, n_heads=n_heads) for _ in range(n_layer)])
+        self.ln_final = nn.LayerNorm(n_embed) # layer norm for the final output
         self.lm_head = nn.Linear(n_embed, vocab_size)
 
     def forward(self, idx, targets = None):
@@ -145,6 +149,7 @@ class BigramLanguageModel(nn.Module):
         pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (block_size, n_embed) (T, C)
         x = tok_emb + pos_emb # (B, T, C)
         x = self.blocks(x) # (B, T, C)
+        x = self.ln_final(x) # (B, T, C)
         logits = self.lm_head(x) # (batch_size, block_size, vocab_size) (B, T, C)
         if(targets is None):
             loss = None
@@ -173,7 +178,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=learnign_rate) # create an o
 
 for iter in range(max_iters):
 
-    if iter % eval_interval == 0:
+    if iter % eval_interval == 0 or iter == max_iters - 1:
         losses = estimate_loss()
         print(f'Step {iter}, Train loss: {losses["train"]:.4f}, Val loss: {losses["val"]:.4f}')
 
