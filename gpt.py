@@ -134,7 +134,7 @@ class Block(nn.Module):
         x = x + self.ffwd(self.ln2(x))
         return x
 
-class BigramLanguageModel(nn.Module):
+class GPTLanguageModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embed)
@@ -171,7 +171,7 @@ class BigramLanguageModel(nn.Module):
             idx = torch.cat((idx, idx_next), dim=1) # (B, T+1)
         return idx
 
-model = BigramLanguageModel()
+model = GPTLanguageModel()
 model = model.to(device) # move the model to the proper device
 
 optimizer = torch.optim.Adam(model.parameters(), lr=learnign_rate) # create an optimizer object
