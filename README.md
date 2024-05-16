@@ -2,7 +2,7 @@ Transformer architecture paper: https://arxiv.org/pdf/1706.03762
 
 I tried to train the transformer on 80% of the input data in this repo for 10k iterations ( about 7 hours on my GPU ) and it loses generality.
 4k iterations seems to be optimum. After that it seems like it's specializing on the training data at the cost of performing worse on data that it never sees.
-Step 0,    Train loss: 4.2989, Val loss: 4.3010
+Step 0,    Train loss: 4.2989, Val loss: 4.3010\n
 Step 500,  Train loss: 1.6403, Val loss: 1.8056
 Step 1000, Train loss: 1.4273, Val loss: 1.6292
 Step 1500, Train loss: 1.3373, Val loss: 1.5638
