@@ -6,7 +6,7 @@ from torch.nn import functional as F
 #hyperparameters
 block_size = 64 # set the block size ( maximum context length for predictions)
 batch_size = 256 # set the batch size ( how many blocks to train on at once)
-max_iters = 10000 # set the number of iterations to train for
+max_iters = 4000 # set the number of iterations to train for
 eval_interval = 500 # set the number of iterations to evaluate the model
 learnign_rate = 3e-4 # set the learning rate
 eval_iters = 200
